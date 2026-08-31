@@ -24,3 +24,4 @@ index 1c4d326..f8dd2bf 100644
  #define MODE_S_LONG_MSG_BYTES (112/8)
  #define MODE_S_UNIT_FEET 0
  #define MODE_S_UNIT_METERS 1
+
