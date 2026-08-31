@@ -9,7 +9,7 @@ if not jst_is_android
     soapysdr_dep = subproject(
         'soapysdr',
         required: true,
-        default_options: soapy_static_options,
+        default_options: ['default_library=shared'],
     ).get_variable('soapysdr_dep')
 endif
 

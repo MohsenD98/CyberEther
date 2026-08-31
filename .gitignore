@@ -87,3 +87,4 @@ CLAUDE.md
 .agents
 .ruff_cache
 .claude
+lib/SoapySDR/modules0.8/*.dll

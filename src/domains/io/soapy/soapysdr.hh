@@ -78,6 +78,10 @@ class JETSTREAM_API SoapyReceiver {
     Result setAntenna(const std::string& antenna);
     Result setTunerFrequency(F32 frequency);
     Result setSampleRate(F32 sampleRate);
+    // Devices may coerce a request to the nearest achievable value (e.g. a USRP B2xx
+    // re-selecting its master clock), so callers read back what actually took effect.
+    std::optional<F32> getTunerFrequency() const;
+    std::optional<F32> getSampleRate() const;
     Result setAutomaticGain(bool automaticGain);
     Result setBiasTee(bool enabled);
     Result startStream(const SoapySDR::Kwargs& args);

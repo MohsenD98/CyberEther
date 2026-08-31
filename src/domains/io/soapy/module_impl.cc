@@ -4,6 +4,7 @@
 #include <SoapySDR/Types.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <exception>
 #include <new>
 
@@ -311,19 +312,32 @@ std::vector<std::string> SoapyImpl::listAntennas() const {
 }
 
 Result SoapyImpl::setTunerFrequency(const F32& freq) {
-    JST_CHECK(receiverDevice.setTunerFrequency(freq));
+    // Copied because `freq` often aliases the `frequency` member written below.
+    const F32 requestedFrequency = freq;
 
-    frequency = freq;
+    JST_CHECK(receiverDevice.setTunerFrequency(requestedFrequency));
+
+    // Report what the device settled on, not what was requested.
+    frequency = receiverDevice.getTunerFrequency().value_or(requestedFrequency);
     buffer.setAttribute("frequency", frequency);
 
     return Result::SUCCESS;
 }
 
 Result SoapyImpl::setSampleRate(const F32& rate) {
-    JST_CHECK(receiverDevice.setSampleRate(rate));
+    // Copied because `rate` often aliases the `sampleRate` member written below.
+    const F32 requestedRate = rate;
 
-    sampleRate = rate;
-    activeSampleRate = rate;
+    JST_CHECK(receiverDevice.setSampleRate(requestedRate));
+
+    // Devices can coerce the request to the nearest achievable value, so report the
+    // rate that actually took effect (e.g. a USRP B2xx re-selecting its master clock).
+    sampleRate = receiverDevice.getSampleRate().value_or(requestedRate);
+    if (std::abs(sampleRate - requestedRate) > 1.0f) {
+        JST_INFO("[MODULE_SOAPY] Sample rate coerced from {:.3f} MHz to {:.3f} MHz.",
+                 requestedRate / 1e6, sampleRate / 1e6);
+    }
+    activeSampleRate = sampleRate;
     buffer.setAttribute("sampleRate", sampleRate);
 
     return Result::SUCCESS;

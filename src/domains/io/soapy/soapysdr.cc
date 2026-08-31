@@ -81,6 +81,23 @@ int WebUsbRevision() {
 }
 #endif
 
+#ifndef JST_OS_BROWSER
+// SoapySDR only auto-loads out-of-tree modules (SoapyPlutoSDR, SoapyUHD, ...) when the
+// registry lives in a shared library. Load them explicitly so their factories reach us.
+void LoadExternalModules() {
+    static std::once_flag flag;
+    std::call_once(flag, [] {
+        try {
+            SoapySDR::loadModules();
+        } catch (const std::exception& e) {
+            JST_WARN("[MODULE_SOAPY] Failed to load external SoapySDR modules: {}", e.what());
+        } catch (...) {
+            JST_WARN("[MODULE_SOAPY] Failed to load external SoapySDR modules.");
+        }
+    });
+}
+#endif
+
 SoapySDR::KwargsList DiscoverDevices(const SoapySDR::Kwargs& args, const bool refresh = false,
                                     const std::optional<DiscoveryClock::time_point> now = std::nullopt) {
 #ifdef JST_OS_BROWSER
@@ -89,6 +106,8 @@ SoapySDR::KwargsList DiscoverDevices(const SoapySDR::Kwargs& args, const bool re
         JST_ERROR("[MODULE_SOAPY] Browser not compatible with WebUSB.");
         return {};
     }
+#else
+    LoadExternalModules();
 #endif
 
     auto& cache = GetDiscoveryCache();
@@ -422,6 +441,38 @@ Result SoapyReceiver::setSampleRate(const F32 sampleRate) {
     }
 
     return Result::SUCCESS;
+}
+
+std::optional<F32> SoapyReceiver::getTunerFrequency() const {
+    if (state == State::Closed) {
+        return std::nullopt;
+    }
+
+    try {
+        return static_cast<F32>(device->getFrequency(SOAPY_SDR_RX, 0));
+    } catch (const std::exception& e) {
+        JST_WARN("[MODULE_SOAPY] Failed to read back the device frequency: {}", e.what());
+    } catch (...) {
+        JST_WARN("[MODULE_SOAPY] Failed to read back the device frequency.");
+    }
+
+    return std::nullopt;
+}
+
+std::optional<F32> SoapyReceiver::getSampleRate() const {
+    if (state == State::Closed) {
+        return std::nullopt;
+    }
+
+    try {
+        return static_cast<F32>(device->getSampleRate(SOAPY_SDR_RX, 0));
+    } catch (const std::exception& e) {
+        JST_WARN("[MODULE_SOAPY] Failed to read back the device sample rate: {}", e.what());
+    } catch (...) {
+        JST_WARN("[MODULE_SOAPY] Failed to read back the device sample rate.");
+    }
+
+    return std::nullopt;
 }
 
 Result SoapyReceiver::setAutomaticGain(const bool automaticGain) {
