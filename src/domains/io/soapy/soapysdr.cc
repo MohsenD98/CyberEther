@@ -353,12 +353,14 @@ Result SoapyReceiver::queryCapabilities() {
 Result SoapyReceiver::validateSettings(const F32 sampleRate,
                                        const F32 frequency) const {
     if (!SampleRateInRanges(sampleRateRanges, sampleRate)) {
-        JST_ERROR("[MODULE_SOAPY] Sample rate ({:.2f} MHz) not supported.", sampleRate / 1e6);
+        JST_ERROR("[MODULE_SOAPY] Sample rate ({:.3f} MHz) not supported. Device sample rates: {}.",
+                  sampleRate / 1e6, SoapyRangesToString(sampleRateRanges));
         return Result::ERROR;
     }
 
     if (!SoapyRangeContains(frequencyRanges, frequency)) {
-        JST_ERROR("[MODULE_SOAPY] Frequency ({:.2f} MHz) not supported.", frequency / 1e6);
+        JST_ERROR("[MODULE_SOAPY] Frequency ({:.3f} MHz) not supported. Device frequencies: {}.",
+                  frequency / 1e6, SoapyRangesToString(frequencyRanges));
         return Result::ERROR;
     }
 
@@ -402,7 +404,8 @@ Result SoapyReceiver::setTunerFrequency(const F32 frequency) {
     }
 
     if (!SoapyRangeContains(frequencyRanges, frequency)) {
-        JST_WARN("[MODULE_SOAPY] Frequency ({:.2f} MHz) not supported.", frequency / 1e6);
+        JST_WARN("[MODULE_SOAPY] Frequency ({:.3f} MHz) not supported. Device frequencies: {}.",
+                 frequency / 1e6, SoapyRangesToString(frequencyRanges));
         return Result::WARNING;
     }
 
@@ -426,7 +429,8 @@ Result SoapyReceiver::setSampleRate(const F32 sampleRate) {
     }
 
     if (!SampleRateInRanges(sampleRateRanges, sampleRate)) {
-        JST_WARN("[MODULE_SOAPY] Sample rate ({:.2f} MHz) not supported.", sampleRate / 1e6);
+        JST_WARN("[MODULE_SOAPY] Sample rate ({:.3f} MHz) not supported. Device sample rates: {}.",
+                 sampleRate / 1e6, SoapyRangesToString(sampleRateRanges));
         return Result::WARNING;
     }
 
@@ -473,6 +477,29 @@ std::optional<F32> SoapyReceiver::getSampleRate() const {
     }
 
     return std::nullopt;
+}
+
+std::optional<F32> SoapyReceiver::nearestSampleRate(const F32 sampleRate) const {
+    if (!std::isfinite(sampleRate) || sampleRate <= 0.0f) {
+        return std::nullopt;
+    }
+    if (SampleRateInRanges(sampleRateRanges, sampleRate)) {
+        return std::nullopt;
+    }
+
+    F32 nearest = 0.0f;
+    if (!SoapyRangeNearest(sampleRateRanges, sampleRate, nearest) || nearest <= 0.0f) {
+        return std::nullopt;
+    }
+    return nearest;
+}
+
+std::string SoapyReceiver::describeSampleRateRanges() const {
+    return SoapyRangesToString(sampleRateRanges);
+}
+
+std::string SoapyReceiver::describeFrequencyRanges() const {
+    return SoapyRangesToString(frequencyRanges);
 }
 
 Result SoapyReceiver::setAutomaticGain(const bool automaticGain) {

@@ -626,6 +626,79 @@ TEST_CASE("Soapy runtime ranges retain stepped capability checks",
     REQUIRE(Modules::SoapyRangeContains(endpointRange, endpoint));
 }
 
+TEST_CASE("Soapy snaps unsupported rates to the closest device capability",
+          "[modules][soapy][devices][sample-rate]") {
+    F32 nearest = 0.0f;
+
+    SECTION("requests below the device floor clamp to the minimum") {
+        // Mirrors a USRP X3x0: 200 MHz master clock, maximum decimation of 512.
+        const std::vector ranges{SoapySDR::Range(390625.0, 200.0e6, 1.0)};
+
+        REQUIRE(Modules::SoapyRangeNearest(ranges, 240000.0f, nearest));
+        REQUIRE(nearest == 390625.0f);
+    }
+
+    SECTION("requests inside a stepped range snap to the closest step") {
+        const std::vector ranges{SoapySDR::Range(1.0e6, 3.0e6, 1.0e6)};
+
+        REQUIRE(Modules::SoapyRangeNearest(ranges, 2.4e6f, nearest));
+        REQUIRE(nearest == 2.0e6f);
+
+        REQUIRE(Modules::SoapyRangeNearest(ranges, 9.0e6f, nearest));
+        REQUIRE(nearest == 3.0e6f);
+    }
+
+    SECTION("the closest of multiple disjoint ranges wins") {
+        const std::vector ranges{
+            SoapySDR::Range(1.0e6, 2.0e6, 0.0),
+            SoapySDR::Range(10.0e6, 20.0e6, 0.0),
+        };
+
+        REQUIRE(Modules::SoapyRangeNearest(ranges, 8.0e6f, nearest));
+        REQUIRE(nearest == 10.0e6f);
+    }
+
+    SECTION("a device without usable ranges reports no candidate") {
+        REQUIRE_FALSE(Modules::SoapyRangeNearest({}, 1.0e6f, nearest));
+    }
+
+    SECTION("a non-finite request reports no candidate") {
+        const std::vector ranges{SoapySDR::Range(1.0e6, 3.0e6, 1.0e6)};
+
+        REQUIRE_FALSE(Modules::SoapyRangeNearest(ranges,
+                                                 std::numeric_limits<F32>::quiet_NaN(),
+                                                 nearest));
+    }
+}
+
+TEST_CASE("Soapy receivers only report a nearest rate for unsupported requests",
+          "[modules][soapy][devices][sample-rate]") {
+    testSoapyState = {};
+    testSoapyState.sampleRateRanges = {
+        SoapySDR::Range(390625.0, 200.0e6, 1.0),
+    };
+
+    Modules::SoapyReceiver receiver;
+    REQUIRE(receiver.open({{"driver", TestSoapyDriver}}) == Result::SUCCESS);
+
+    // Rates the device already accepts are left untouched.
+    REQUIRE_FALSE(receiver.nearestSampleRate(2.0e6f).has_value());
+
+    // A request under the device floor snaps up to it instead of failing outright.
+    const auto snapped = receiver.nearestSampleRate(240000.0f);
+    REQUIRE(snapped.has_value());
+    REQUIRE(*snapped == 390625.0f);
+
+    REQUIRE_FALSE(receiver.nearestSampleRate(0.0f).has_value());
+    REQUIRE_FALSE(receiver.nearestSampleRate(-1.0f).has_value());
+    REQUIRE_FALSE(receiver.nearestSampleRate(std::numeric_limits<F32>::infinity()).has_value());
+
+    // The diagnostic tells the user what the device would have accepted.
+    const auto description = receiver.describeSampleRateRanges();
+    REQUIRE(description.find("0.390625") != std::string::npos);
+    REQUIRE(description.find("200 MHz") != std::string::npos);
+}
+
 TEST_CASE("Soapy receivers accept intermediate sample rates within advertised ranges",
           "[modules][soapy][devices][bladerf][sample-rate]") {
     testSoapyState = {};

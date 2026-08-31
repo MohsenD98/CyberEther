@@ -108,6 +108,17 @@ Result SoapyImpl::create() {
     const auto streamArgs = SoapySDR::KwargsFromString(streamString);
 
     JST_CHECK(receiverDevice.open(args));
+
+    // A device with a hard floor (e.g. a USRP X3x0, whose 200 MHz master clock and
+    // maximum decimation of 512 put it at 390.625 kHz) would otherwise refuse to open
+    // at all. Fall back to the closest rate it does accept.
+    if (const auto nearest = receiverDevice.nearestSampleRate(sampleRate)) {
+        JST_WARN("[MODULE_SOAPY] Sample rate ({:.3f} MHz) not supported. Using the closest "
+                 "supported rate ({:.3f} MHz). Device sample rates: {}.",
+                 sampleRate / 1e6, *nearest / 1e6, receiverDevice.describeSampleRateRanges());
+        sampleRate = *nearest;
+    }
+
     JST_CHECK(receiverDevice.validateSettings(sampleRate, frequency));
     JST_CHECK(allocateBuffers());
     JST_CHECK(configureDevice(streamArgs));
