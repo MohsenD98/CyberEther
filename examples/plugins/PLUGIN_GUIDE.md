@@ -282,18 +282,14 @@ JST_REGISTER_MODULE(MyBlockImplNativeCpu, DeviceType::CPU, RuntimeType::NATIVE, 
 
 ```cpp
 #include <jetstream/plugin.hh>
-#include <jetstream/runtime.hh>
 
-JST_PLUGIN_ABI(
-    "cyberether-my-plugin",   // نام یکتا
-    "0.1.0",                  // نسخه پلاگین
-    JETSTREAM_VERSION_CURRENT, // حداقل نسخه CyberEther
-    Jetstream::DeviceType::CPU,
-    Jetstream::RuntimeType::NATIVE
-)
+JST_REGISTER_PLUGIN();
 ```
 
-این ماکرو `jetstream_plugin_abi` symbol را export می‌کند که CyberEther هنگام لود dll آن را می‌یابد.
+این ماکرو `jetstream_plugin_abi` symbol را export می‌کند که CyberEther هنگام لود dll
+آن را می‌یابد. رکورد ABI فقط magic، اندازه و نسخهٔ ABI را دارد و هیچ متادیتایی
+مثل نام یا نسخهٔ پلاگین در آن نیست — آن‌ها در `manifest.yml` داخل بستهٔ `.cep`
+قرار می‌گیرند.
 
 ---
 
@@ -434,4 +430,85 @@ CyberEther → Settings → Registry → Add Plugin
 | `JST_MODULE_PARAMS(...)` | `module.hh` | پارامترهای ماژول |
 | `JST_REGISTER_BLOCK(T)` | `block_impl.cc` | ثبت بلوک در رجیستری |
 | `JST_REGISTER_MODULE(T, device, runtime, tag)` | `module_impl_native_cpu.cc` | ثبت ماژول برای device مشخص |
-| `JST_PLUGIN_ABI(...)` | `plugin.cc` | export symbol برای dll loader |
+| `JST_REGISTER_PLUGIN()` | `plugin.cc` | export symbol برای dll loader |
+| `JST_REGISTER_BLOCK_NO_MODULES(T)` | `block_impl.cc` | ثبت بلوکی که ماژول ندارد |
+| `JST_BLOCK_NODE_SIZE(SIZE)` | `block.hh` | اندازه پیش‌فرض نود (`XS`..`XL`) |
+
+---
+
+## ۱۲. مثال دوم: بلوک بدون ماژول — USRP Probe
+
+بلوک `MohsenBLK` الگوی متداول است: بلوک + ماژول + کرنل. ولی همه بلوک‌ها ماژول
+لازم ندارند. اگر بلوک هیچ تنسوری پردازش نمی‌کند و فقط اطلاعات نشان می‌دهد،
+می‌توان کلاً ماژول را حذف کرد.
+
+بلوک `mohsen_usrp_probe` (در `examples/plugins/mohsen/.../usrp_probe/`) دستگاه‌های
+USRP متصل را پیدا می‌کند و گزارش را به صورت markdown داخل خود نود نمایش می‌دهد.
+هیچ ورودی و خروجی سیگنالی ندارد.
+
+### تفاوت‌ها با بلوک معمولی
+
+| موضوع | بلوک معمولی | بلوک بدون ماژول |
+|--------|-------------|-----------------|
+| فایل‌ها | `block.hh` + `module.hh` + ۳ فایل پیاده‌سازی | فقط `block.hh` + `block_impl.cc` |
+| ثبت | `JST_REGISTER_BLOCK(T)` | `JST_REGISTER_BLOCK_NO_MODULES(T)` |
+| `create()` | `moduleCreate(...)` و `moduleExposeOutput(...)` | فقط `return Result::SUCCESS;` |
+| محل منطق | `module_impl_native_cpu.cc` | `configure()` داخل خود بلوک |
+
+`configure()` هر بار که بلوک ساخته می‌شود یا یکی از پارامترهایش تغییر می‌کند
+اجرا می‌شود — به همین دلیل اسکن دستگاه‌ها آنجا انجام می‌شود و پارامتر `rescan`
+صرفاً یک کلید است که با تغییرش `configure()` دوباره صدا زده شود.
+
+### نمایش خروجی در نود
+
+فیلد پیکربندی با فرمت `markdown` یک ویرایشگر/نمایشگر markdown داخل نود می‌سازد:
+
+```cpp
+JST_CHECK(defineInterfaceConfig("report",
+                                "Detected Devices",
+                                "Result of the last scan.",
+                                "markdown"));
+```
+
+بلوک کافی است در `configure()` مقدار همان پارامتر را بنویسد:
+
+```cpp
+Result MohsenUsrpProbeImpl::configure() {
+    report = scan();
+    return Result::SUCCESS;
+}
+```
+
+فرمت‌های دیگری که ویرایشگر پشتیبانی می‌کند: `text`، `multiline`، `bool`،
+`int`، `uint`، `float`، `range`، `dropdown:a,b,c`، `filepicker:ext1,ext2`،
+`filesave`، `vector`، `vector-inline`، `tensor-config`، `python`.
+
+### وابستگی خارجی (SoapySDR)
+
+این بلوک مستقیم با SoapySDR کار می‌کند، پس پلاگین باید به آن لینک شود. چون
+وابستگی اختیاری است، در meson با یک متغیر نگهبان کنترل می‌شود:
+
+```meson
+# examples/plugins/meson.build
+plugin_soapysdr_deps = []
+plugin_soapysdr_enabled = false
+if cfg_lst.get('JETSTREAM_LOADER_SOAPY_AVAILABLE', false)
+    plugin_soapysdr_deps += soapysdr_dep
+    plugin_soapysdr_enabled = true
+endif
+```
+
+```meson
+# .../usrp_probe/meson.build
+if get_variable('plugin_soapysdr_enabled', false)
+    plugin_sources += files(['block_impl.cc'])
+endif
+```
+
+اگر SoapySDR در بیلد نباشد، پلاگین همچنان کامپایل می‌شود و فقط این بلوک را
+ندارد.
+
+> نکته دربارهٔ زمان اجرا: پلاگین به `SoapySDR.dll` لینک می‌شود، ولی لازم نیست
+> این فایل کنار پلاگین کپی شود. چون `cyberether.exe` خودش همان DLL را از قبل در
+> پروسه لود کرده، ویندوز هنگام لود پلاگین همان نسخه را resolve می‌کند و هر دو
+> یک registry مشترک می‌بینند.

@@ -4,6 +4,16 @@ pymod = import('python')
 py = pymod.find_installation(required: true)
 plugin_bundler = files('blueprint/tools/bundler.py')
 
+# The USRP probe block in the Mohsen plugin calls SoapySDR directly. The
+# dependency is optional: when SoapySDR is not part of the build the plugin
+# still compiles, only without that block.
+plugin_soapysdr_deps = []
+plugin_soapysdr_enabled = false
+if cfg_lst.get('JETSTREAM_LOADER_SOAPY_AVAILABLE', false)
+    plugin_soapysdr_deps += soapysdr_dep
+    plugin_soapysdr_enabled = true
+endif
+
 # Hadi
 
 plugin_sources = []
@@ -44,7 +54,7 @@ mohsen_module = shared_module(
     'cyberether_mohsen_plugin',
     plugin_sources,
     include_directories: include_directories('mohsen/include', 'mohsen/src'),
-    dependencies: libjetstream_dep,
+    dependencies: [libjetstream_dep] + plugin_soapysdr_deps,
     gnu_symbol_visibility: 'hidden',
     name_prefix: '',
     build_by_default: false,
