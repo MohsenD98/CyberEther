@@ -88,3 +88,6 @@ CLAUDE.md
 .ruff_cache
 .claude
 lib/SoapySDR/modules0.8/*.dll
+
+# Local log output from run-log.bat
+cyberether.log
