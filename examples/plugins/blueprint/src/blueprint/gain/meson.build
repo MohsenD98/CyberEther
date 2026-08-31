@@ -4,7 +4,9 @@ blueprint_gain_sources = files([
     'module_impl.cc',
 ])
 
-if plugin_device_cpu_enabled
+# Defined by the standalone plugin project. When the plugin is built in-tree by
+# CyberEther, the variable is absent and the CPU implementation is always used.
+if get_variable('plugin_device_cpu_enabled', true)
     blueprint_gain_sources += files(['module_impl_native_cpu.cc'])
 endif
 
